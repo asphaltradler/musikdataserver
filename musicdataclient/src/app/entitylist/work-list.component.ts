@@ -2,15 +2,19 @@ import {Component} from '@angular/core';
 import {EntityListComponent} from './entity-list.component';
 import {Work} from '../entities/work';
 import {WorkService} from '../services/work.service';
-import {SearchfieldComponent} from '../search/searchfield.component';
+import {SearchfieldComponent} from '../controls/searchfield.component';
 import {ActivatedRoute, Router} from '@angular/router';
 import {NgForOf} from '@angular/common';
+import {PagingComponent} from '../controls/paging.component';
+import {ListHeaderComponent} from './list-header/list-header.component';
 
 @Component({
   selector: 'app-work-list',
   standalone: true,
   imports: [
     SearchfieldComponent,
+    PagingComponent,
+    ListHeaderComponent,
     NgForOf,
   ],
   templateUrl: './entity-list.component.html',

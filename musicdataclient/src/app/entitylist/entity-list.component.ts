@@ -1,24 +1,33 @@
-import {OnDestroy, OnInit} from '@angular/core';
+import {OnDestroy} from '@angular/core';
 import {AbstractEntity} from '../entities/abstractEntity';
 import {ActivatedRoute, EventType, Params, Router} from '@angular/router';
 import {AbstractEntityService} from '../services/abstractEntityService';
 import {Subscription} from 'rxjs';
-import {SearchfieldComponent} from '../search/searchfield.component';
+import {SearchfieldComponent} from '../controls/searchfield.component';
+import {Page} from '../entities/page';
+import {appDefaults} from '../../config/config';
 
 @Object
-export abstract class EntityListComponent<E extends AbstractEntity> implements OnInit, OnDestroy {
+export abstract class EntityListComponent<E extends AbstractEntity> implements OnDestroy {
   public static urlParamEntitySearchTitle = 'title';
-  public static urlParamEntityName = 'searchby';
+  private static urlParamEntityName = 'searchby';
 
   public entityType!: typeof AbstractEntity;
+  public page?: Page<E>;
+  private _pageSize = appDefaults.defaultPageSize;
 
-  protected _entities: E[] = [];
-  protected filter = '';
-  protected titleFor = '';
-  protected lastSearchNameForThis?: string = undefined;
+  private _filter = '';
+  private titleFor = '';
 
   private changeSubscription: Subscription;
   private lastSearchSubscription?: Subscription;
+
+  private _searchEntityType!: typeof AbstractEntity;
+
+  private lastSearchId?: Number;
+  private _searchName = '';
+
+  public lastSearchPerformance?: string;
 
   protected _searchableEntities: typeof AbstractEntity[];
 
@@ -26,6 +35,7 @@ export abstract class EntityListComponent<E extends AbstractEntity> implements O
               protected route: ActivatedRoute,
               protected router: Router) {
     this.entityType = service.entityType;
+    this._searchEntityType = this.entityType;
     //eigenen Typ ausschließen in Darstellung
     this._searchableEntities = SearchfieldComponent.searchEntities.filter(
       (entity) => entity != this.entityType
@@ -33,23 +43,16 @@ export abstract class EntityListComponent<E extends AbstractEntity> implements O
     //default/Vorbelegung bei Aktivierung
     this.changeSubscription = router.events.subscribe((event) => {
       if (event.type === EventType.ActivationEnd) {
-        //zurücksetzen, damit wir neu suchen
-        this.lastSearchNameForThis = undefined;
         this.startSearchFromQuery();
       }
     });
     console.log(`${this.entityType.getNameSingular()}List created`);
   }
 
-  ngOnInit(): void {
-    //wird durch ActivationEnd-Event erledigt
-  }
-
   ngOnDestroy(): void {
     this.changeSubscription?.unsubscribe();
     this.lastSearchSubscription?.unsubscribe();
-    this.filter = '';
-    this.lastSearchNameForThis = undefined;
+    this._filter = '';
   }
 
   startSearchFromQuery(): void {
@@ -73,38 +76,49 @@ export abstract class EntityListComponent<E extends AbstractEntity> implements O
   }
 
   searchByEntityName(searchEntityType: typeof AbstractEntity, searchString: string) {
-    if (searchEntityType === this.entityType) {
-      if (this.lastSearchNameForThis !== undefined && searchString.toLowerCase().includes(this.lastSearchNameForThis)) {
-        this.filter = searchString.toLowerCase();
-        console.log(`Keine neue Suche, da Suchtext '${searchString}' im vorherigen '${this.lastSearchNameForThis}' enthalten`);
-        return;
-      }
-      this.lastSearchNameForThis = searchString.toLowerCase();
-    }
-    this.searchByEntityIdOrName(searchEntityType, undefined, searchString);
+    this.searchByEntityIdOrName(searchEntityType, 0, undefined, searchString);
   }
 
   searchByEntityId(searchEntityType: typeof AbstractEntity, id: number, searchString: string) {
-    this.searchByEntityIdOrName(searchEntityType, id, searchString);
+    this.searchByEntityIdOrName(searchEntityType, 0, id, searchString);
   }
 
-  private searchByEntityIdOrName(searchEntityType: typeof AbstractEntity, id?: Number, searchString?: string) {
+  private searchByEntityIdOrName(searchEntityType: typeof AbstractEntity, pageNumber: number, id?: Number, searchString?: string) {
     //falls noch eine Suche unterwegs ist: abbrechen
     this.lastSearchSubscription?.unsubscribe();
     console.log(`Suche ${this.entityType.namePlural} nach ${searchEntityType.entityName}=${searchString || '*'}`);
     const obs = id
-      ? this.service.findByOtherId(searchEntityType, id.valueOf())
-      : this.service.findByOtherNameLike(searchEntityType, searchString?.toLowerCase() || '');
+      ? this.service.findByOtherId(searchEntityType, id.valueOf(), pageNumber, this._pageSize)
+      : searchEntityType === this.entityType
+        ? this.service.findNameLike(searchString?.toLowerCase() || '', pageNumber, this._pageSize)
+        : this.service.findByOtherNameLike(searchEntityType, searchString?.toLowerCase() || '', pageNumber, this._pageSize);
     const time = performance.now();
-    this.lastSearchSubscription = obs.subscribe(data => {
-      this.titleFor = searchString ? `für ${searchEntityType.getNameSingular()} '${searchString}'` : 'insgesamt';
-      this.fillData(data);
-      console.log(`Suche ${this.entityType.namePlural} nach ${searchEntityType.entityName} dauerte ${performance.now() - time}ms`);
+    this.lastSearchSubscription = obs.subscribe(page => {
+      this.titleFor = searchString ? `für ${searchEntityType.getNameSingular()}='${searchString}'` : 'insgesamt';
+      this.fillData(page, searchEntityType, id, searchString);
+      const timeString = (performance.now() - time).toFixed(2);
+      this.lastSearchPerformance = `Suche ${this.entityType.namePlural} nach ${searchEntityType.entityName}=${searchString || '*'} dauerte ${timeString}ms`;
+      console.log(this.lastSearchPerformance);
     });
   }
 
-  fillData(data: E[]) {
-    this._entities = data;
+  fillData(page: Page<E>, searchEntityType: typeof AbstractEntity, searchId?: Number, searchString?: string) {
+    this.page = page;
+    this._searchEntityType = searchEntityType;
+    this.lastSearchId = searchId;
+    this._searchName = searchString || '';
+  }
+
+  searchPreviousPage(): void {
+    if (this._searchEntityType && this.hasPreviousPage()) {
+      this.searchByEntityIdOrName(this._searchEntityType, this.page!.number - 1, this.lastSearchId, this._searchName);
+    }
+  }
+
+  searchNextPage(): void {
+    if (this._searchEntityType && this.hasNextPage()) {
+      this.searchByEntityIdOrName(this._searchEntityType, this.page!.number + 1, this.lastSearchId, this._searchName);
+    }
   }
 
   navigateOtherEntityByThis(entityType: typeof AbstractEntity, entity: AbstractEntity) {
@@ -137,23 +151,72 @@ export abstract class EntityListComponent<E extends AbstractEntity> implements O
     return item.id;
   }
 
-  setFilter(filterString: string) {
-    this.filter = filterString.toLowerCase();
+  get pageSize(): number {
+    return this._pageSize;
+  }
+
+  set pageSize(value: number) {
+    this._pageSize = value;
+    this.searchByEntityName(this.searchEntityType, this.searchName);
+  }
+
+  get searchName(): string {
+    return this._searchName;
+  }
+
+  set searchName(value: string) {
+    this._searchName = value;
+    this.searchByEntityName(this.searchEntityType, this.searchName);
+  }
+
+  get filter(): string {
+    return this._filter;
+  }
+
+  set filter(value: string) {
+    this._filter = value?.toLowerCase();
+  }
+
+  get searchEntityType(): typeof AbstractEntity {
+    return this._searchEntityType;
+  }
+
+  set searchEntityType(value: typeof AbstractEntity) {
+    this._searchEntityType = value;
   }
 
   get title() {
-    if (this.filter) {
-      const filteredCount = this._entities.filter((ent) => ent.name?.toLowerCase().includes(this.filter)).length;
-      return `${filteredCount} von ${this.entityType.getNumberDescription(this._entities.length)} ${this.titleFor}`;
-    } else {
-      return `${this.entityType.getNumberDescription(this._entities.length)} ${this.titleFor}`;
+    if (!this.page) {
+      return '';
     }
+    let title;
+    const entityCount = this.entities.length;
+    if (this._filter && entityCount < this.page.numberOfElements) {
+      title = `${entityCount} von ${this.entityType.getNumberDescription(this.page.totalElements)}`;
+    } else {
+      const entityStart = this.page.number * this.page.size;
+      title = entityCount !== this.page.totalElements
+        ? `${this.entityType.getNumbersDescription(entityStart+1, this.page.numberOfElements + entityStart)} von ${this.page.totalElements}`
+        : this.entityType.getNumberDescription(this.page.totalElements);
+    }
+    return `${title} ${this.titleFor}`;
   }
 
   get entities(): E[] {
-    return this.filter
-      ? this._entities.filter((ent) => ent.name?.toLowerCase().includes(this.filter))
-      : this._entities;
+    if (!this.page) {
+      return [];
+    }
+    return this._filter
+      ? this.page.content.filter((ent) => ent.name?.toLowerCase().includes(this._filter))
+      : this.page.content;
+  }
+
+  hasPreviousPage() {
+    return !this.page?.first;
+  }
+
+  hasNextPage() {
+    return !this.page?.last;
   }
 
   get searchableEntities() {

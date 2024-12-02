@@ -8,16 +8,14 @@ import java.io.IOException;
 
 public interface MusicDataServerStartupService {
 
-    void setMediaDirectories(String rootDir, String startDir) throws IOException;
-
+    void configure() throws IOException;
     void init();
-
     void start();
 
     TrackRepository getTrackRepository();
-    NamedEntityRepository<Artist> getartistRepository();
+    NamedEntityRepository<Artist> getArtistRepository();
     NamedEntityRepository<Album> getAlbumRepository();
-    NamedEntityRepository<Work> getworkRepository();
+    NamedEntityRepository<Work> getWorkRepository();
     NamedEntityRepository<Genre> getGenreRepository();
-    NamedEntityRepository<Composer> getcomposerRepository();
+    NamedEntityRepository<Composer> getComposerRepository();
 }
