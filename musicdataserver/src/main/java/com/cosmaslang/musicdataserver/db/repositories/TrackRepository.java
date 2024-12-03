@@ -1,10 +1,10 @@
 package com.cosmaslang.musicdataserver.db.repositories;
 
 import com.cosmaslang.musicdataserver.db.entities.Track;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
-
-import java.util.stream.Stream;
 
 @Repository
 public interface TrackRepository extends NamedEntityRepository<Track> {
@@ -14,20 +14,20 @@ public interface TrackRepository extends NamedEntityRepository<Track> {
     //@Query("SELECT t FROM Track t WHERE t.album.name ilike %:album%")
         //identisch im Verhalten mit:
         //@Query("SELECT a.tracks FROM Album a WHERE a.name like %:album%")
-    Stream<Track> streamByAlbumNameContainsIgnoreCaseOrderByAlbumName(String album);
+    Page<Track> findByAlbumNameContainsIgnoreCaseOrderByAlbumName(String album, Pageable pageable);
     //@Query("SELECT t FROM Track t WHERE t.composer.name = :composer")
-    Stream<Track> streamByComposerNameContainsIgnoreCaseOrderByComposerNameAscAlbumNameAscId(String composer);
+    Page<Track> findByComposerNameContainsIgnoreCaseOrderByComposerNameAscAlbumNameAscId(String composer, Pageable pageable);
     @Query("select t from Track t join fetch t.genres g where g.name ilike %:genre%")
-    Stream<Track> streamDistinctByGenresNameContainsIgnoreCaseOrderByGenresNameAscAlbumNameAscId(String genre);
+    Page<Track> findDistinctByGenresNameContainsIgnoreCaseOrderByGenresNameAscAlbumNameAscId(String genre, Pageable pageable);
     @Query("select t from Track t join fetch t.artists i where i.name ilike %:artist%")
-    Stream<Track> streamDistinctByArtistsNameContainsIgnoreCaseOrderByArtistsNameAscAlbumNameAscId(String artist);
+    Page<Track> findDistinctByArtistsNameContainsIgnoreCaseOrderByArtistsNameAscAlbumNameAscId(String artist, Pageable pageable);
     //@Query("SELECT t FROM Track t WHERE t.work.name ILIKE %:work%")
-    Stream<Track> streamByWorkNameContainsIgnoreCaseOrderByWorkNameAscAlbumNameAscId(String work);
+    Page<Track> findByWorkNameContainsIgnoreCaseOrderByWorkNameAscAlbumNameAscId(String work, Pageable pageable);
 
-    Stream<Track> streamByAlbumId(Long id);
-    Stream<Track> streamByComposerId(Long id);
-    Stream<Track> streamByWorkId(Long id);
-    Stream<Track> streamByArtistsId(Long id);
+    Page<Track> findByAlbumId(Long id, Pageable pageable);
+    Page<Track> findByComposerId(Long id, Pageable pageable);
+    Page<Track> findByWorkId(Long id, Pageable pageable);
+    Page<Track> findByArtistsId(Long id, Pageable pageable);
     //@Query("select t from Track t join fetch t.genres g where g.id = :genreId")
-    Stream<Track> streamByGenresId(Long id);
+    Page<Track> findByGenresId(Long id, Pageable pageable);
 }
